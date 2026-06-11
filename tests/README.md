@@ -1,13 +1,15 @@
 # tests/
 
-Automated tests live here.
+Backend-тесты запускаются из корня проекта в Python 3.12 venv:
 
-Stack-agnostic layout. Suggested organization:
+```bash
+pytest -q
+```
 
-- Mirror `src/` so each module's tests are easy to locate.
-- Separate test types by folder when useful: `unit/`, `integration/`, `e2e/`.
-- Keep fixtures and helpers in `tests/fixtures/` or `tests/helpers/`.
-- Never commit real credentials in fixtures. Use values from `.env.example` style placeholders.
+- `unit/test_calculation.py` — площади, округление, упаковки, TVA и несколько
+  комнат.
+- `integration/test_seed.py` — идемпотентность seed прайса.
+- `api/test_estimates_api.py` — CRUD, комнаты, calculate, share, стабильные
+  ошибки, снапшоты цен и ограничения фото.
 
-Test runner, naming convention, and coverage targets are stack-specific —
-document them in the project's `CLAUDE.md` and `AGENTS.md`.
+Текущий набор: 17 тестов.

@@ -1,22 +1,49 @@
 # Renovation Estimator
 
 Веб-сервис расчёта строительной сметы: фото объекта + размеры комнат + выбор
-работ (шпаклёвка, грунтовка, покраска) → смета с PDF и share-ссылкой.
+работ (шпаклёвка, грунтовка, покраска) → смета с материалами, браузерной
+печатью и share-ссылкой.
 
 ## Status
 
-Прототип: проектирование завершено, код не написан. См. `PROJECT.md`.
+MVP реализован. Backend, frontend, REST API и автоматические backend-тесты
+находятся в этом репозитории. Актуальный scope и ограничения: `PROJECT.md`.
 
 ## Stack
 
-React (Vite, TypeScript) · FastAPI (Python 3.12+) · SQLite + Alembic. EUR, RU/FR.
+React 19 · Vite 7 · TypeScript · FastAPI · Python 3.12+ · SQLAlchemy 2 ·
+SQLite без Alembic. EUR, RU/FR.
 
 ## Getting started
 
 ```bash
-cp .env.example .env
-# реализация ещё не начата — см. docs/CODEX_REQUIREMENTS.md
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev]'
+uvicorn backend.app.main:app --reload
 ```
+
+В другом терминале:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+- UI: `http://127.0.0.1:5173`
+- OpenAPI: `http://127.0.0.1:8000/docs`
+
+Проверки:
+
+```bash
+pytest -q
+cd frontend && npm run typecheck && npm run build
+```
+
+Фото API реализован, но текущий frontend ещё не отправляет выбранные на первом
+шаге файлы. В share-view сохранённые суммы доступны, но расход и упаковки
+показываются прочерками. Серверного PDF нет: используется печать браузера.
 
 ## Layout
 
