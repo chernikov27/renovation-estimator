@@ -16,6 +16,9 @@ def work(
     consumption_per_m2: str = "0",
     package_size: str = "1",
     package_price: str = "0",
+    quantity_basis: str = "area",
+    quantity: str | None = None,
+    unit: str = "m2",
 ) -> WorkCalculationInput:
     return WorkCalculationInput(
         code=code,
@@ -24,6 +27,9 @@ def work(
         material_consumption_per_m2=Decimal(consumption_per_m2),
         material_package_size=Decimal(package_size),
         material_package_price=Decimal(package_price),
+        quantity_basis=quantity_basis,
+        quantity=Decimal(quantity) if quantity is not None else None,
+        unit=unit,
     )
 
 
@@ -189,3 +195,41 @@ def test_multiple_rooms_sum_subtotal_and_apply_vat() -> None:
     assert [room.base_area for room in result.rooms] == [Decimal("3.00"), Decimal("4.50")]
     assert result.subtotal == Decimal("15.00")
     assert result.total == Decimal("16.50")
+
+
+def test_length_quantity_basis_uses_explicit_quantity() -> None:
+    result = calculate_estimate(
+        EstimateCalculationInput(
+            vat_pct=Decimal("10"),
+            rooms=[
+                RoomCalculationInput(
+                    length_m=Decimal("4"),
+                    width_m=Decimal("3"),
+                    height_m=Decimal("2.7"),
+                    works=[
+                        work(
+                            code="crack_treatment",
+                            unit_price="6",
+                            consumption_per_m2="0.3",
+                            package_size="5",
+                            package_price="9.9",
+                            quantity_basis="length",
+                            quantity="6",
+                            unit="ml",
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+
+    line = result.rooms[0].lines[0]
+    assert line.area == Decimal("49.80")
+    assert line.quantity == Decimal("6.00")
+    assert line.unit == "ml"
+    assert line.labor_cost == Decimal("36.00")
+    assert line.consumption == Decimal("1.80")
+    assert line.packages == 1
+    assert line.material_cost == Decimal("9.90")
+    assert result.subtotal == Decimal("45.90")
+    assert result.total == Decimal("50.49")

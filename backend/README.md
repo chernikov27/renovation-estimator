@@ -1,7 +1,7 @@
 # backend/
 
 FastAPI-приложение на Python 3.12+, SQLAlchemy 2 и SQLite. Схема создаётся
-через `create_all`, прайс загружается из `../data/price_list.seed.json`.
+через `create_all`, прайс загружается из `../data/price_list.seed.v2.json`.
 Alembic и серверный PDF в MVP не используются.
 
 ## Запуск

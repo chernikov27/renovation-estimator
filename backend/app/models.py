@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -78,18 +78,47 @@ class Opening(Base):
     room: Mapped[Room] = relationship(back_populates="openings")
 
 
+class CatalogMetadata(Base):
+    __tablename__ = "catalog_metadata"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    vat_presets: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class WorkGroup(Base):
+    __tablename__ = "work_groups"
+
+    code: Mapped[str] = mapped_column(String, primary_key=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    name_ru: Mapped[str] = mapped_column(String, nullable=False)
+    name_fr: Mapped[str] = mapped_column(String, nullable=False)
+
+    work_types: Mapped[list[WorkType]] = relationship(back_populates="work_group")
+
+
 class WorkType(Base):
     __tablename__ = "work_types"
-    __table_args__ = (CheckConstraint("code in ('putty', 'primer', 'paint')", name="ck_work_types_code"),)
+    __table_args__ = (
+        CheckConstraint("unit in ('m2', 'ml', 'u')", name="ck_work_types_unit"),
+        CheckConstraint("quantity_basis in ('area', 'length')", name="ck_work_types_quantity_basis"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uuid4_str)
     code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     name_ru: Mapped[str] = mapped_column(String, nullable=False)
     name_fr: Mapped[str] = mapped_column(String, nullable=False)
     unit: Mapped[str] = mapped_column(String, default="m2", nullable=False)
+    group_code: Mapped[str | None] = mapped_column(ForeignKey("work_groups.code"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    quantity_basis: Mapped[str] = mapped_column(String, default="area", nullable=False)
     base_unit_price: Mapped[float] = mapped_column(Float, nullable=False)
     default_layers: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_layers: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    active: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
+    work_group: Mapped[WorkGroup | None] = relationship(back_populates="work_types")
     material: Mapped[Material] = relationship(
         back_populates="work_type",
         cascade="all, delete-orphan",
@@ -100,7 +129,7 @@ class WorkType(Base):
 
 class Material(Base):
     __tablename__ = "materials"
-    __table_args__ = (CheckConstraint("consumption_unit in ('l', 'kg')", name="ck_materials_unit"),)
+    __table_args__ = (CheckConstraint("consumption_unit in ('l', 'kg', 'u', 'm2')", name="ck_materials_unit"),)
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uuid4_str)
     work_type_id: Mapped[str] = mapped_column(ForeignKey("work_types.id"), unique=True, nullable=False)
@@ -126,6 +155,7 @@ class RoomWork(Base):
     material_consumption_per_m2: Mapped[float] = mapped_column(Float, nullable=False)
     material_package_size: Mapped[float] = mapped_column(Float, nullable=False)
     material_package_price: Mapped[float] = mapped_column(Float, nullable=False)
+    quantity: Mapped[float | None] = mapped_column(Float)
     computed_area: Mapped[float | None] = mapped_column(Float)
     labor_cost: Mapped[float | None] = mapped_column(Float)
     material_cost: Mapped[float | None] = mapped_column(Float)

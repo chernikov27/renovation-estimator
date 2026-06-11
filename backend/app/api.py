@@ -15,7 +15,7 @@ from backend.app.calculation import (
     WorkCalculationInput,
     calculate_estimate,
 )
-from backend.app.models import Estimate, Material, Opening, Photo, Room, RoomWork, WorkType
+from backend.app.models import CatalogMetadata, Estimate, Material, Opening, Photo, Room, RoomWork, WorkGroup, WorkType
 from backend.app.schemas import EstimateCreate, EstimateUpdate, RoomPayload, RoomWorkPayload
 
 
@@ -130,6 +130,10 @@ def serialize_room_work(work: RoomWork) -> dict:
         "code": work.work_type.code,
         "name_ru": work.work_type.name_ru,
         "name_fr": work.work_type.name_fr,
+        "group": work.work_type.group_code,
+        "unit": work.work_type.unit,
+        "quantity_basis": work.work_type.quantity_basis,
+        "quantity": work.quantity,
         "layers": work.layers,
         "unit_price": work.unit_price,
         "material_consumption_per_m2": work.material_consumption_per_m2,
@@ -195,6 +199,58 @@ def serialize_price_list(work_types: list[WorkType]) -> dict:
     }
 
 
+def serialize_price_list_v2(
+    metadata: CatalogMetadata | None,
+    groups: list[WorkGroup],
+    work_types: list[WorkType],
+) -> dict:
+    group_order = {group.code: group.sort_order for group in groups}
+    ordered_work_types = sorted(
+        work_types,
+        key=lambda work_type: (group_order.get(work_type.group_code or "", 0), work_type.sort_order),
+    )
+    return {
+        "version": metadata.version if metadata is not None else 2,
+        "currency": metadata.currency if metadata is not None else "EUR",
+        "vat_presets": metadata.vat_presets if metadata is not None else [10, 20],
+        "groups": [
+            {
+                "code": group.code,
+                "sort_order": group.sort_order,
+                "name_ru": group.name_ru,
+                "name_fr": group.name_fr,
+            }
+            for group in groups
+        ],
+        "work_types": [
+            {
+                "id": work_type.id,
+                "code": work_type.code,
+                "group": work_type.group_code,
+                "sort_order": work_type.sort_order,
+                "name_ru": work_type.name_ru,
+                "name_fr": work_type.name_fr,
+                "unit": work_type.unit,
+                "quantity_basis": work_type.quantity_basis,
+                "base_unit_price": work_type.base_unit_price,
+                "default_layers": work_type.default_layers,
+                "max_layers": work_type.max_layers,
+                "active": bool(work_type.active),
+                "material": {
+                    "id": work_type.material.id,
+                    "name_ru": work_type.material.name_ru,
+                    "name_fr": work_type.material.name_fr,
+                    "consumption_per_unit": work_type.material.consumption_per_m2,
+                    "consumption_unit": work_type.material.consumption_unit,
+                    "package_size": work_type.material.package_size,
+                    "package_price": work_type.material.package_price,
+                },
+            }
+            for work_type in ordered_work_types
+        ],
+    }
+
+
 def serialize_material(material: Material) -> dict:
     return {
         "id": material.id,
@@ -222,6 +278,11 @@ def work_type_by_code(session: Session, code: str) -> WorkType:
 def build_room_work(session: Session, payload: RoomWorkPayload) -> RoomWork:
     work_type = work_type_by_code(session, payload.code)
     material = work_type.material
+    if work_type.quantity_basis == "length" and payload.quantity is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "quantity_required", "message": "Quantity is required for length-based work"},
+        )
     return RoomWork(
         work_type=work_type,
         layers=payload.layers,
@@ -229,6 +290,7 @@ def build_room_work(session: Session, payload: RoomWorkPayload) -> RoomWork:
         material_consumption_per_m2=material.consumption_per_m2,
         material_package_size=material.package_size,
         material_package_price=material.package_price,
+        quantity=payload.quantity,
     )
 
 
@@ -387,10 +449,30 @@ def calculate_estimate_endpoint(estimate_id: str, request: Request) -> dict:
 
 
 @router.get("/price-list")
-def read_price_list(request: Request) -> dict:
+def read_price_list(request: Request, version: int | None = None) -> dict:
     with request.app.state.SessionLocal() as session:
+        if version == 2:
+            groups = session.scalars(select(WorkGroup).order_by(WorkGroup.sort_order)).all()
+            work_types = session.scalars(
+                select(WorkType)
+                .options(selectinload(WorkType.material))
+                .where(WorkType.active == 1)
+            ).all()
+            return serialize_price_list_v2(
+                session.get(CatalogMetadata, 1),
+                list(groups),
+                list(work_types),
+            )
+        if version is not None:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "unsupported_price_list_version", "message": "Unsupported price list version"},
+            )
         work_types = session.scalars(
-            select(WorkType).options(selectinload(WorkType.material)).order_by(WorkType.code)
+            select(WorkType)
+            .options(selectinload(WorkType.material))
+            .where(WorkType.code.in_(("paint", "primer", "putty")))
+            .order_by(WorkType.code)
         ).all()
         return serialize_price_list(list(work_types))
 
@@ -423,6 +505,9 @@ def to_calculation_input(estimate: Estimate) -> EstimateCalculationInput:
                         material_consumption_per_m2=Decimal(str(work.material_consumption_per_m2)),
                         material_package_size=Decimal(str(work.material_package_size)),
                         material_package_price=Decimal(str(work.material_package_price)),
+                        quantity_basis=work.work_type.quantity_basis,
+                        quantity=Decimal(str(work.quantity)) if work.quantity is not None else None,
+                        unit=work.work_type.unit,
                     )
                     for work in room.works
                 ],
@@ -460,6 +545,8 @@ def serialize_calculation_result(result) -> dict:
                         "code": line.code,
                         "layers": line.layers,
                         "area": float(line.area),
+                        "quantity": float(line.quantity),
+                        "unit": line.unit,
                         "labor_cost": float(line.labor_cost),
                         "consumption": float(line.consumption),
                         "packages": line.packages,

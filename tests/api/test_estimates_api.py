@@ -23,6 +23,19 @@ def client(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+@pytest.fixture()
+def v2_client(tmp_path: Path) -> TestClient:
+    engine = create_engine(f"sqlite:///{tmp_path / 'api-v2.db'}", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+    with Session(engine) as session:
+        seed_price_list(session, Path("data/price_list.seed.v2.json"))
+        session.commit()
+    app = create_app(testing_session, initialize_database=False)
+    app.state.uploads_dir = tmp_path / "uploads"
+    return TestClient(app)
+
+
 JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"jpeg-data"
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"png-data"
 WEBP_BYTES = b"RIFF\x12\x00\x00\x00WEBPVP8 " + b"webp-data"
@@ -185,6 +198,83 @@ def test_price_list_endpoint_is_read_only_and_seeded(client: TestClient) -> None
     putty = next(item for item in payload["work_types"] if item["code"] == "putty")
     assert putty["name_ru"] == "Шпаклёвка стен и потолка"
     assert putty["material"]["package_size"] == 25
+
+
+def test_default_price_list_keeps_mvp_frontend_contract(v2_client: TestClient) -> None:
+    response = v2_client.get("/api/price-list")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"currency", "work_types"}
+    assert [item["code"] for item in payload["work_types"]] == ["paint", "primer", "putty"]
+    assert set(payload["work_types"][0]) == {
+        "id",
+        "code",
+        "name_ru",
+        "name_fr",
+        "unit",
+        "base_unit_price",
+        "default_layers",
+        "material",
+    }
+    assert set(payload["work_types"][0]["material"]) == {
+        "id",
+        "name_ru",
+        "name_fr",
+        "consumption_per_m2",
+        "consumption_unit",
+        "package_size",
+        "package_price",
+    }
+
+
+def test_price_list_version_2_returns_professional_catalog(v2_client: TestClient) -> None:
+    response = v2_client.get("/api/price-list?version=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version"] == 2
+    assert payload["currency"] == "EUR"
+    assert payload["vat_presets"] == [10, 20]
+    assert [group["code"] for group in payload["groups"]] == ["prep", "enduits", "peinture"]
+    assert len(payload["work_types"]) == 8
+    assert "putty" not in {item["code"] for item in payload["work_types"]}
+
+    by_code = {item["code"]: item for item in payload["work_types"]}
+    assert by_code["crack_treatment"]["quantity_basis"] == "length"
+    assert by_code["crack_treatment"]["unit"] == "ml"
+    assert by_code["sanding"]["material"]["consumption_unit"] == "u"
+    assert by_code["mesh_reinforcement"]["material"]["consumption_unit"] == "m2"
+    assert by_code["paint"]["group"] == "peinture"
+
+
+def test_length_work_requires_quantity_and_calculates_by_length(v2_client: TestClient) -> None:
+    estimate_id = create_estimate(v2_client)
+    room_payload = {
+        "name": "Salon",
+        "length_m": 4,
+        "width_m": 3,
+        "height_m": 2.7,
+        "works": [{"code": "crack_treatment", "layers": 1}],
+    }
+
+    missing_quantity = v2_client.post(f"/api/estimates/{estimate_id}/rooms", json=room_payload)
+    assert missing_quantity.status_code == 422
+    assert missing_quantity.json()["error"]["code"] == "quantity_required"
+
+    room_payload["works"][0]["quantity"] = 6
+    created = v2_client.post(f"/api/estimates/{estimate_id}/rooms", json=room_payload)
+    assert created.status_code == 201
+    assert created.json()["works"][0]["quantity_basis"] == "length"
+    assert created.json()["works"][0]["unit"] == "ml"
+    assert created.json()["works"][0]["quantity"] == 6
+
+    calculated = v2_client.post(f"/api/estimates/{estimate_id}/calculate")
+    assert calculated.status_code == 200
+    line = calculated.json()["rooms"][0]["lines"][0]
+    assert line["quantity"] == 6
+    assert line["unit"] == "ml"
+    assert line["labor_cost"] == 36
 
 
 def test_returns_error_envelope_for_missing_estimate(client: TestClient) -> None:

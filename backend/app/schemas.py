@@ -23,9 +23,10 @@ class OpeningPayload(BaseModel):
 
 
 class RoomWorkPayload(BaseModel):
-    code: str = Field(pattern="^(putty|primer|paint)$")
+    code: str = Field(min_length=1, max_length=80)
     layers: int = Field(ge=1, le=5)
     unit_price: float | None = Field(default=None, ge=0, le=1000)
+    quantity: float | None = Field(default=None, ge=0)
 
 
 class RoomPayload(BaseModel):

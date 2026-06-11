@@ -44,6 +44,9 @@ class WorkCalculationInput:
     material_consumption_per_m2: Decimal
     material_package_size: Decimal
     material_package_price: Decimal
+    quantity_basis: str = "area"
+    quantity: Decimal | None = None
+    unit: str = "m2"
 
 
 @dataclass(slots=True)
@@ -77,6 +80,8 @@ class WorkCalculationResult:
     code: str
     layers: int
     area: Decimal
+    quantity: Decimal
+    unit: str
     labor_cost: Decimal
     consumption: Decimal
     packages: int
@@ -181,9 +186,18 @@ def _calculate_work(area: Decimal, work: WorkCalculationInput) -> WorkCalculatio
     if package_size <= 0:
         raise ValueError("material_package_size must be greater than zero")
 
+    if work.quantity_basis == "area":
+        quantity = area
+    elif work.quantity_basis == "length":
+        if work.quantity is None:
+            raise ValueError("quantity is required for length-based work")
+        quantity = _round_area(_decimal(work.quantity))
+    else:
+        raise ValueError("quantity_basis must be 'area' or 'length'")
+
     layers = Decimal(work.layers)
-    labor_cost = _round_money(area * _decimal(work.unit_price) * layers)
-    raw_consumption = area * _decimal(work.material_consumption_per_m2) * layers
+    labor_cost = _round_money(quantity * _decimal(work.unit_price) * layers)
+    raw_consumption = quantity * _decimal(work.material_consumption_per_m2) * layers
     packages = _ceil_decimal(raw_consumption / package_size)
     material_cost = _round_money(Decimal(packages) * _decimal(work.material_package_price))
     total_cost = _round_money(labor_cost + material_cost)
@@ -192,6 +206,8 @@ def _calculate_work(area: Decimal, work: WorkCalculationInput) -> WorkCalculatio
         code=work.code,
         layers=work.layers,
         area=area,
+        quantity=quantity,
+        unit=work.unit,
         labor_cost=labor_cost,
         consumption=_round_area(raw_consumption),
         packages=packages,
