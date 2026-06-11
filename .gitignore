@@ -1,0 +1,59 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Generic build / output / cache
+dist/
+build/
+out/
+coverage/
+.cache/
+tmp/
+.tmp/
+
+# Project data (runtime)
+data/app.db
+data/uploads/
+
+# Node / TypeScript
+node_modules/
+.pnpm-store/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+.python/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Uncomment the sections you need for your stack ---
+
+# Go
+# vendor/
+# *.test
+# *.out
+
+# Rust
+# target/
