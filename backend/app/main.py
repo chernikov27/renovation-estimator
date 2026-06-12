@@ -3,13 +3,15 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.api import error_payload, router
-from backend.app.config import get_settings
+from backend.app.config import ROOT_DIR, get_settings
 from backend.app.db import init_db
 from backend.app.db import SessionLocal as DefaultSessionLocal
+
+FRONTEND_DIST = ROOT_DIR / "frontend" / "dist"
 
 
 def validation_error_code(exc: RequestValidationError) -> str:
@@ -56,6 +58,22 @@ def create_app(
             status_code=422,
             content=error_payload(validation_error_code(exc), "Validation failed"),
         )
+
+    # Serve the built SPA when present (production image). The catch-all is
+    # registered after the API router, so /api/* keeps priority. Unknown
+    # non-API paths fall back to index.html for client-side routing.
+    if FRONTEND_DIST.is_dir():
+        index_file = FRONTEND_DIST / "index.html"
+
+        @api_app.get("/{full_path:path}")
+        async def serve_spa(full_path: str) -> FileResponse:
+            if full_path.startswith("api"):
+                raise HTTPException(status_code=404, detail={"code": "not_found", "message": "Not found"})
+            if full_path:
+                candidate = (FRONTEND_DIST / full_path).resolve()
+                if candidate.is_file() and candidate.is_relative_to(FRONTEND_DIST.resolve()):
+                    return FileResponse(candidate)
+            return FileResponse(index_file)
 
     return api_app
 
