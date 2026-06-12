@@ -1,4 +1,7 @@
 export type Locale = "ru" | "fr";
+export type WorkUnit = "m2" | "ml" | "u";
+export type QuantityBasis = "area" | "length";
+export type MaterialUnit = "l" | "kg" | "u" | "m2";
 
 export class ApiError extends Error {
   constructor(
@@ -16,7 +19,7 @@ export type WorkType = {
   code: string;
   name_ru: string;
   name_fr: string;
-  unit: string;
+  unit: WorkUnit;
   base_unit_price: number;
   default_layers: number;
   material: {
@@ -34,6 +37,44 @@ export type PriceList = {
   work_types: WorkType[];
 };
 
+export type WorkGroup = {
+  code: string;
+  sort_order: number;
+  name_ru: string;
+  name_fr: string;
+};
+
+export type ProfessionalWorkType = {
+  id: string;
+  code: string;
+  group: string;
+  sort_order: number;
+  name_ru: string;
+  name_fr: string;
+  unit: WorkUnit;
+  quantity_basis: QuantityBasis;
+  base_unit_price: number;
+  default_layers: number;
+  max_layers: number;
+  active: boolean;
+  material: {
+    name_ru: string;
+    name_fr: string;
+    consumption_per_unit: number;
+    consumption_unit: MaterialUnit;
+    package_size: number;
+    package_price: number;
+  };
+};
+
+export type ProfessionalPriceList = {
+  version: 2;
+  currency: string;
+  vat_presets: number[];
+  groups: WorkGroup[];
+  work_types: ProfessionalWorkType[];
+};
+
 export type OpeningPayload = {
   kind: "window" | "door";
   width_m: number;
@@ -45,6 +86,7 @@ export type RoomWorkPayload = {
   code: string;
   layers: number;
   unit_price?: number;
+  quantity?: number;
 };
 
 export type RoomPayload = {
@@ -87,10 +129,14 @@ export type RoomWork = {
   code: string;
   name_ru: string;
   name_fr: string;
+  group: string | null;
+  unit: WorkUnit;
+  quantity_basis: QuantityBasis;
+  quantity: number | null;
   layers: number;
   unit_price: number;
   material_consumption_per_m2: number;
-  material_consumption_unit: "l" | "kg";
+  material_consumption_unit: MaterialUnit;
   material_package_size: number;
   material_package_price: number;
   computed_area: number | null;
@@ -113,6 +159,8 @@ export type CalculationResult = {
       code: string;
       layers: number;
       area: number;
+      quantity: number;
+      unit: WorkUnit;
       labor_cost: number;
       consumption: number;
       packages: number;
@@ -175,5 +223,8 @@ export const api = {
   },
   getPriceList() {
     return request<PriceList>("/api/price-list");
+  },
+  getPriceListV2() {
+    return request<ProfessionalPriceList | PriceList>("/api/price-list?version=2");
   }
 };

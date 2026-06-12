@@ -1,14 +1,22 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { OpeningPayload, PriceList, RoomPayload, RoomWorkPayload } from "../api";
+import type { OpeningPayload, RoomPayload, WorkUnit } from "../api";
 import { api } from "../api";
+import {
+  buildRoomWorkPayloads,
+  createInitialWorkState,
+  normalizePriceList,
+  updateUntouchedAcrylicQuantity,
+  type Catalog,
+  type WorkFormState
+} from "../catalog";
 import { translateError, useI18n } from "../i18n";
 
 export function RoomsPage() {
   const { estimateId } = useParams();
   const navigate = useNavigate();
   const { locale, t } = useI18n();
-  const [priceList, setPriceList] = useState<PriceList | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [name, setName] = useState("Комната 1");
   const [length, setLength] = useState(4);
   const [width, setWidth] = useState(3);
@@ -18,57 +26,44 @@ export function RoomsPage() {
     { kind: "window", width_m: 1.5, height_m: 1.4, count: 1 },
     { kind: "door", width_m: 0.9, height_m: 2.05, count: 1 }
   ]);
-  const [works, setWorks] = useState<Record<string, { selected: boolean; layers: number; unit_price: number }>>({});
+  const [works, setWorks] = useState<WorkFormState>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api
-      .getPriceList()
-      .then((list) => {
-        setPriceList(list);
-        setWorks(
-          Object.fromEntries(
-            list.work_types.map((work) => [
-              work.code,
-              {
-                selected: true,
-                layers: work.default_layers,
-                unit_price: work.base_unit_price
-              }
-            ])
-          )
-        );
+      .getPriceListV2()
+      .then((payload) => {
+        const nextCatalog = normalizePriceList(payload);
+        setCatalog(nextCatalog);
+        setWorks(createInitialWorkState(nextCatalog, { length, width }));
       })
       .catch((err) => setError(translateError(err, t)));
   }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!estimateId || !priceList) {
+    if (!estimateId || !catalog) {
       return;
     }
-    const selectedWorks: RoomWorkPayload[] = Object.entries(works)
-      .filter(([, value]) => value.selected)
-      .map(([code, value]) => ({ code, layers: value.layers, unit_price: value.unit_price }));
-    const payload: RoomPayload = {
-      name,
-      length_m: length,
-      width_m: width,
-      height_m: height,
-      include_ceiling: includeCeiling,
-      openings,
-      works: selectedWorks
-    };
 
     setSaving(true);
     setError(null);
     try {
+      const payload: RoomPayload = {
+        name,
+        length_m: length,
+        width_m: width,
+        height_m: height,
+        include_ceiling: includeCeiling,
+        openings,
+        works: buildRoomWorkPayloads(catalog, works)
+      };
       await api.createRoom(estimateId, payload);
       await api.calculateEstimate(estimateId);
       navigate(`/estimate/${estimateId}`);
     } catch (err) {
-      setError(translateError(err, t));
+      setError(err instanceof Error && err.message === "quantity_required" ? t.quantityRequired : translateError(err, t));
     } finally {
       setSaving(false);
     }
@@ -96,8 +91,8 @@ export function RoomsPage() {
             <input value={name} maxLength={80} onChange={(event) => setName(event.target.value)} />
           </label>
           <div className="three-grid">
-            <NumberField label={t.length} value={length} setValue={setLength} />
-            <NumberField label={t.width} value={width} setValue={setWidth} />
+            <NumberField label={t.length} value={length} setValue={(value) => updateDimensions(value, width)} />
+            <NumberField label={t.width} value={width} setValue={(value) => updateDimensions(length, value)} />
             <NumberField label={t.height} value={height} setValue={setHeight} />
           </div>
           <label className="check-row">
@@ -134,29 +129,65 @@ export function RoomsPage() {
 
         <section className="panel form-grid">
           <h2>{t.works}</h2>
-          {!priceList ? (
+          {!catalog ? (
             <p>{t.loading}</p>
           ) : (
-            priceList.work_types.map((workType) => {
-              const state = works[workType.code];
-              return (
-                <div className="work-row" key={workType.code}>
-                  <label className="check-row">
-                    <input
-                      type="checkbox"
-                      checked={state?.selected ?? false}
-                      onChange={(event) => setWorks({ ...works, [workType.code]: { ...state, selected: event.target.checked } })}
-                    />
-                    {locale === "fr" ? workType.name_fr : workType.name_ru}
-                  </label>
-                  <NumberField label={t.layers} value={state?.layers ?? workType.default_layers} setValue={(value) => setWorks({ ...works, [workType.code]: { ...state, layers: value } })} step={1} />
-                  <NumberField label={t.unitPrice} value={state?.unit_price ?? workType.base_unit_price} setValue={(value) => setWorks({ ...works, [workType.code]: { ...state, unit_price: value } })} />
-                </div>
-              );
-            })
+            catalog.groups.map((group) => (
+              <section className="work-group" key={group.code}>
+                {catalog.version === 2 && (
+                  <h3 className="work-group-heading">{locale === "fr" ? group.name_fr : group.name_ru}</h3>
+                )}
+                {group.works.map((workType) => {
+                  const state = works[workType.code];
+                  return (
+                    <div className="professional-work-row" key={workType.code}>
+                      <label className="check-row work-name">
+                        <input
+                          type="checkbox"
+                          checked={state?.selected ?? false}
+                          onChange={(event) => updateWork(workType.code, { selected: event.target.checked })}
+                        />
+                        {locale === "fr" ? workType.name_fr : workType.name_ru}
+                      </label>
+                      <NumberField
+                        label={t.layers}
+                        value={state?.layers ?? workType.default_layers}
+                        setValue={(value) => updateWork(workType.code, { layers: value })}
+                        min={1}
+                        max={workType.max_layers}
+                        step={1}
+                      />
+                      <NumberField
+                        label={`${t.unitPrice.replace("m²", unitLabel(workType.unit, t))}`}
+                        value={state?.unit_price ?? workType.base_unit_price}
+                        setValue={(value) => updateWork(workType.code, { unit_price: value })}
+                        min={0}
+                      />
+                      {workType.quantity_basis === "length" ? (
+                        <label>
+                          {t.lengthQuantity}
+                          <input
+                            min="0.01"
+                            step="0.01"
+                            type="number"
+                            value={state?.quantity ?? ""}
+                            onChange={(event) => updateWork(workType.code, {
+                              quantity: event.target.value,
+                              quantityTouched: true
+                            })}
+                          />
+                        </label>
+                      ) : (
+                        <span className="work-unit-note">{unitLabel(workType.unit, t)}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            ))
           )}
           {error && <p className="error-text">{error}</p>}
-          <button className="button primary wide" disabled={saving || !priceList} type="submit">
+          <button className="button primary wide" disabled={saving || !catalog} type="submit">
             {saving ? t.loading : t.saveRoom}
           </button>
         </section>
@@ -167,23 +198,44 @@ export function RoomsPage() {
   function updateOpening(index: number, patch: Partial<OpeningPayload>) {
     setOpenings(openings.map((opening, current) => (current === index ? { ...opening, ...patch } : opening)));
   }
+
+  function updateDimensions(nextLength: number, nextWidth: number) {
+    setLength(nextLength);
+    setWidth(nextWidth);
+    setWorks((current) => updateUntouchedAcrylicQuantity(current, nextLength, nextWidth));
+  }
+
+  function updateWork(code: string, patch: Partial<WorkFormState[string]>) {
+    setWorks((current) => ({
+      ...current,
+      [code]: { ...current[code], ...patch }
+    }));
+  }
 }
 
 function NumberField({
   label,
   value,
   setValue,
-  step = 0.01
+  step = 0.01,
+  min,
+  max
 }: {
   label: string;
   value: number;
   setValue: (value: number) => void;
   step?: number;
+  min?: number;
+  max?: number;
 }) {
   return (
     <label>
       {label}
-      <input type="number" step={step} value={value} onChange={(event) => setValue(Number(event.target.value))} />
+      <input min={min} max={max} type="number" step={step} value={value} onChange={(event) => setValue(Number(event.target.value))} />
     </label>
   );
+}
+
+function unitLabel(unit: WorkUnit, t: { unitM2: string; unitMl: string; unitU: string }) {
+  return unit === "ml" ? t.unitMl : unit === "u" ? t.unitU : t.unitM2;
 }

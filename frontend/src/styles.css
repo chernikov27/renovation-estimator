@@ -257,7 +257,8 @@ input[type="checkbox"] {
 
 .three-grid,
 .opening-row,
-.work-row {
+.work-row,
+.professional-work-row {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -267,6 +268,39 @@ input[type="checkbox"] {
 .work-row {
   align-items: end;
   grid-template-columns: 1.1fr repeat(3, minmax(90px, 1fr));
+}
+
+.work-group {
+  display: grid;
+  gap: 12px;
+}
+
+.work-group + .work-group {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.work-group-heading {
+  color: var(--text);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.professional-work-row {
+  align-items: end;
+  grid-template-columns: minmax(240px, 1.5fr) minmax(90px, 0.55fr) minmax(120px, 0.7fr) minmax(120px, 0.7fr);
+}
+
+.work-name {
+  align-self: center;
+}
+
+.work-unit-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+  min-height: 42px;
+  padding-top: 13px;
 }
 
 .file-list {
@@ -387,7 +421,8 @@ dd {
 
   .three-grid,
   .opening-row,
-  .work-row,
+    .work-row,
+    .professional-work-row,
   .estimate-layout {
     grid-template-columns: 1fr;
   }

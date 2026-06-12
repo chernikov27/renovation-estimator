@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CalculationResult, Estimate, RoomPayload } from "../api";
+import type { CalculationResult, Estimate, MaterialUnit, RoomPayload } from "../api";
 import { api } from "../api";
 import { translateError, useI18n } from "../i18n";
 
@@ -207,7 +207,7 @@ function formatNumber(value: number | null | undefined, locale: "ru" | "fr") {
   return new Intl.NumberFormat(numberLocale(locale), { maximumFractionDigits: 2 }).format(value);
 }
 
-function formatConsumption(value: number | null | undefined, unit: "l" | "kg", locale: "ru" | "fr") {
+function formatConsumption(value: number | null | undefined, unit: MaterialUnit, locale: "ru" | "fr") {
   if (value === null || value === undefined) {
     return "–";
   }

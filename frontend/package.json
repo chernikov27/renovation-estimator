@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node ./node_modules/vite/bin/vite.js --config vite.config.ts --host 127.0.0.1",
     "build": "node ./node_modules/vite/bin/vite.js build --config vite.config.ts",
+    "test": "node ./node_modules/vitest/vitest.mjs run --config vitest.config.ts --pool=forks --maxWorkers=1 --no-file-parallelism",
     "typecheck": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && node ./node_modules/typescript/bin/tsc -p tsconfig.node.json --noEmit",
     "preview": "node ./node_modules/vite/bin/vite.js preview --config vite.config.ts --host 127.0.0.1"
   },
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "vitest": "^3.2.4"
   }
 }
