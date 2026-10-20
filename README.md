@@ -63,9 +63,6 @@ cd frontend && npm run typecheck && npm run build
 └── tests/           # тесты backend (pytest)
 ```
 
-## Workflow
+## Notes
 
-This project follows the shared process in `../WORKFLOW.md` and the rulebook in `../RULES.md`.
-
-- Claude rules: `./CLAUDE.md` (inherits `../CLAUDE.md`)
-- Codex rules: `./AGENTS.md` (inherits `../AGENTS.md`)
+This is an MVP intended for local development. Before production use, add authentication, secure file storage, backups, rate limiting, and a privacy review for uploaded photos.
